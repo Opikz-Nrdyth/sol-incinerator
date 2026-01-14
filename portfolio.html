@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-Chain Portfolio 🌐</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <script>
+      tailwind.config = {
+        theme: { extend: { fontFamily: { sans: ["Outfit", "sans-serif"] } } },
+      };
+    </script>
+    <style>
+      body {
+        background-color: #0f172a;
+        color: white;
+        min-height: 100vh;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+      }
+    </style>
+  </head>
+  <body class="p-8 max-w-5xl mx-auto relative">
+    <div class="flex justify-between items-center mb-10">
+      <div>
+        <h1 class="text-3xl font-bold mb-1">
+          My Crypto <span class="text-indigo-400">Vault</span>
+        </h1>
+        <p class="text-slate-400 text-sm">Personal Hot Wallet Manager</p>
+      </div>
+      <a
+        href="/"
+        class="px-4 py-2 bg-slate-800 rounded-lg text-sm hover:bg-slate-700 transition"
+        >Back to Solana</a
+      >
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="wallet-container">
+      <div class="col-span-full text-center py-20 text-slate-500">
+        <i class="fa-solid fa-spinner fa-spin text-2xl"></i><br />Loading
+        Wallets...
+      </div>
+    </div>
+
+    <div
+      id="send-modal"
+      class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-md shadow-2xl"
+      >
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-xl font-bold flex items-center gap-2">
+            <i class="fa-regular fa-paper-plane text-indigo-400"></i> Send
+            <span id="modal-coin-name">COIN</span>
+          </h3>
+          <button
+            onclick="closeModal('send-modal')"
+            class="text-slate-400 hover:text-white"
+          >
+            <i class="fa-solid fa-xmark text-xl"></i>
+          </button>
+        </div>
+        <div class="space-y-4">
+          <input type="hidden" id="send-type" />
+          <div>
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >To Address</label
+            >
+            <input
+              type="text"
+              id="send-to"
+              placeholder="0x... or UQ..."
+              class="w-full bg-black/40 border border-slate-700 rounded-xl px-4 py-3 mt-1 text-white focus:border-indigo-500 outline-none font-mono text-sm"
+            />
+          </div>
+          <div>
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >Amount</label
+            >
+            <div class="relative mt-1">
+              <input
+                type="number"
+                step="0.0001"
+                id="send-amount"
+                placeholder="0.0"
+                class="w-full bg-black/40 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none font-mono text-lg font-bold"
+              />
+              <span
+                id="modal-coin-symbol"
+                class="absolute right-4 top-4 text-slate-500 font-bold text-xs"
+                >ETH</span
+              >
+            </div>
+          </div>
+          <button
+            onclick="executeSend()"
+            id="btn-confirm-send"
+            class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold mt-2 transition shadow-lg shadow-indigo-500/20"
+          >
+            Confirm & Send
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="import-modal"
+      class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-md shadow-2xl"
+      >
+        <div class="flex justify-between items-center mb-6">
+          <h3
+            class="text-xl font-bold flex items-center gap-2 text-emerald-400"
+          >
+            <i class="fa-solid fa-file-import"></i> Import
+            <span id="import-coin-name">Wallet</span>
+          </h3>
+          <button
+            onclick="closeModal('import-modal')"
+            class="text-slate-400 hover:text-white"
+          >
+            <i class="fa-solid fa-xmark text-xl"></i>
+          </button>
+        </div>
+        <div class="space-y-4">
+          <input type="hidden" id="import-type" />
+
+          <div
+            class="bg-yellow-900/30 border border-yellow-700/50 p-3 rounded-lg text-xs text-yellow-200"
+          >
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            Masukkan <b>Private Key</b> (BTC/ETH/SOL) atau <b>Seed Phrase</b> 24
+            kata (TON).
+          </div>
+
+          <div>
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >Secret Key / Mnemonic</label
+            >
+            <textarea
+              id="import-secret"
+              rows="4"
+              placeholder="Paste key here..."
+              class="w-full bg-black/40 border border-slate-700 rounded-xl px-4 py-3 mt-1 text-white focus:border-emerald-500 outline-none font-mono text-xs"
+            ></textarea>
+          </div>
+
+          <button
+            onclick="executeImport()"
+            id="btn-confirm-import"
+            class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold mt-2 transition shadow-lg shadow-emerald-500/20"
+          >
+            Import Wallet
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const renderCard = (coin, name, color, icon, data) => {
+        // TAMPILAN BELUM PUNYA WALLET (ADA IMPORT)
+        if (!data.connected) {
+          return `
+                <div class="glass p-6 rounded-2xl border-t-4 ${color}">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl">${icon}</div>
+                        <h2 class="font-bold text-lg">${name}</h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="createWallet('${coin}')" class="flex-1 py-3 bg-slate-700 hover:bg-white/20 rounded-xl font-bold transition text-sm">
+                            <i class="fa-solid fa-plus"></i> Create
+                        </button>
+                        <button onclick="openImportModal('${coin}', '${name}')" class="flex-1 py-3 bg-slate-800 hover:bg-emerald-900/40 border border-slate-700 hover:border-emerald-500/50 text-slate-300 hover:text-emerald-400 rounded-xl font-bold transition text-sm">
+                            <i class="fa-solid fa-file-import"></i> Import
+                        </button>
+                    </div>
+                </div>`;
+        } else {
+          // TAMPILAN SUDAH ADA WALLET
+          return `
+                <div class="glass p-6 rounded-2xl border-t-4 ${color}">
+                    <div class="absolute top-2 right-4 text-xs text-green-400 font-mono flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Live</div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-2xl">${icon}</div>
+                        <div>
+                            <h2 class="font-bold text-lg">${name}</h2>
+                            <h3 class="text-2xl font-bold text-white">${
+                              data.balance
+                            } <span class="text-sm text-slate-400">${coin.toUpperCase()}</span></h3>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 p-3 rounded-lg mb-4">
+                        <div class="flex justify-between items-center">
+                            <code class="text-xs text-slate-300 truncate w-48">${
+                              data.address
+                            }</code>
+                            <button onclick="navigator.clipboard.writeText('${
+                              data.address
+                            }'); alert('Copied!')" class="text-slate-500 hover:text-white"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+                    
+                    <button onclick="openSendModal('${coin}', '${name}')" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition shadow-lg shadow-indigo-500/20">
+                        <i class="fa-regular fa-paper-plane mr-2"></i> Send Assets
+                    </button>
+                </div>`;
+        }
+      };
+
+      async function loadData() {
+        try {
+          const res = await fetch("/api/multichain/status");
+          const data = await res.json();
+          const container = document.getElementById("wallet-container");
+          container.innerHTML = "";
+
+          const solIcon =
+            '<img src="https://cryptologos.cc/logos/solana-sol-logo.png?v=029" class="w-8 h-8">';
+          container.innerHTML += renderCard(
+            "sol",
+            "Solana",
+            "border-purple-500",
+            solIcon,
+            data.sol
+          );
+          container.innerHTML += renderCard(
+            "btc",
+            "Bitcoin",
+            "border-orange-500",
+            '<i class="fa-brands fa-bitcoin text-orange-500"></i>',
+            data.btc
+          );
+          container.innerHTML += renderCard(
+            "eth",
+            "Ethereum",
+            "border-blue-500",
+            '<i class="fa-brands fa-ethereum text-blue-500"></i>',
+            data.eth
+          );
+          container.innerHTML += renderCard(
+            "ton",
+            "TON Coin",
+            "border-sky-500",
+            '<span class="font-bold text-sky-400">T</span>',
+            data.ton
+          );
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function createWallet(type) {
+        if (!confirm(`Create new ${type.toUpperCase()} wallet?`)) return;
+        try {
+          const res = await fetch("/api/multichain/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type }),
+          });
+          const result = await res.json();
+          if (result.success) {
+            alert(result.message);
+            loadData();
+          }
+        } catch (e) {
+          alert("Error");
+        }
+      }
+
+      // --- MODAL IMPORT ---
+      function openImportModal(coin, name) {
+        document.getElementById("import-type").value = coin;
+        document.getElementById("import-coin-name").innerText = name;
+        document.getElementById("import-secret").value = ""; // Reset input
+
+        document.getElementById("import-modal").classList.remove("hidden");
+        document.getElementById("import-modal").classList.add("flex");
+      }
+
+      async function executeImport() {
+        const type = document.getElementById("import-type").value;
+        const secret = document.getElementById("import-secret").value;
+        const btn = document.getElementById("btn-confirm-import");
+
+        if (!secret) {
+          alert("Kunci tidak boleh kosong!");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML =
+          '<i class="fa-solid fa-spinner fa-spin"></i> Importing...';
+
+        try {
+          const res = await fetch("/api/multichain/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type, secret }),
+          });
+          const result = await res.json();
+
+          if (result.success) {
+            alert("✅ Sukses!\n" + result.message);
+            closeModal("import-modal");
+            loadData();
+          } else {
+            alert("❌ Gagal: " + result.error);
+          }
+        } catch (e) {
+          alert("Koneksi Error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = "Import Wallet";
+        }
+      }
+
+      // --- MODAL SEND ---
+      function openSendModal(coin, name) {
+        document.getElementById("send-type").value = coin;
+        document.getElementById("modal-coin-name").innerText = name;
+        document.getElementById("modal-coin-symbol").innerText =
+          coin.toUpperCase();
+        document.getElementById("send-modal").classList.remove("hidden");
+        document.getElementById("send-modal").classList.add("flex");
+      }
+
+      function closeModal(id) {
+        document.getElementById(id).classList.add("hidden");
+        document.getElementById(id).classList.remove("flex");
+      }
+
+      async function executeSend() {
+        // (Kode send sama seperti sebelumnya)
+        const type = document.getElementById("send-type").value;
+        const to = document.getElementById("send-to").value;
+        const amount = document.getElementById("send-amount").value;
+        // ... (Copy logika send dari kode sebelumnya di sini) ...
+        const btn = document.getElementById("btn-confirm-send");
+        if (!to || !amount) {
+          alert("Isi semua data!");
+          return;
+        }
+        btn.disabled = true;
+        btn.innerHTML =
+          '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+        try {
+          const res = await fetch("/api/multichain/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type, to, amount }),
+          });
+          const result = await res.json();
+          if (result.success) {
+            alert("✅ Sukses!\n\n" + (result.hash || result.message));
+            closeModal("send-modal");
+            loadData();
+          } else {
+            alert("❌ Gagal: " + result.error);
+          }
+        } catch (e) {
+          alert("Koneksi Error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = "Confirm & Send";
+        }
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
