@@ -5,6 +5,7 @@ import * as bitcoin from "bitcoinjs-lib";
 import { ECPairFactory } from "ecpair";
 import * as ecc from "tiny-secp256k1";
 import axios from "axios";
+import { Buffer } from "buffer";
 import {
   Connection,
   Keypair,
@@ -85,16 +86,19 @@ export const sendTon = async (
       };
     }
 
+    const contract = client.open(wallet);
+
+    const seqno = await contract.getSeqno();
     // Buat Transfer Object
-    const transfer = wallet.createTransfer({
-      seqno: await wallet.getSeqno(client.provider()),
+    const transfer = contract.createTransfer({
+      seqno: seqno,
       secretKey: keyPair.secretKey,
       messages: [
         internal({
           to: toAddress,
-          value: amountStr, // TON library otomatis parse string "0.5" jadi NanoTON
+          value: amountStr,
           bounce: false,
-          body: "Sent from My Bot", // Pesan opsional
+          body: "Sent from Opikz Wallet",
         }),
       ],
       sendMode: SendMode.PAY_GAS_SEPARATELY,
@@ -119,10 +123,9 @@ export const sendBtc = async (
   amountBTC: string
 ) => {
   try {
-    const network = bitcoin.networks.bitcoin; // Mainnet
+    const network = bitcoin.networks.bitcoin;
     const keyPair = ECPair.fromWIF(privateKeyWIF, network);
 
-    // 1. Dapatkan Alamat Pengirim (Dari Private Key)
     const { address: senderAddress } = bitcoin.payments.p2wpkh({
       pubkey: keyPair.publicKey,
       network: network,
@@ -131,8 +134,6 @@ export const sendBtc = async (
     if (!senderAddress) throw new Error("Gagal generate alamat pengirim");
 
     console.log(`🔍 Fetching UTXOs for ${senderAddress}...`);
-
-    // 2. Fetch UTXO (Uang Receh) dari Mempool.space
     const utxoRes = await axios.get(
       `https://mempool.space/api/address/${senderAddress}/utxo`
     );
@@ -141,83 +142,75 @@ export const sendBtc = async (
     if (utxos.length === 0)
       throw new Error("Saldo 0 atau belum terkonfirmasi (No UTXOs).");
 
-    // 3. Hitung Target Amount (Satoshis)
-    const amountSats = Math.floor(parseFloat(amountBTC) * 100_000_000);
+    // FIX BTC 1: Gunakan BigInt untuk Amount Target
+    const amountSats = BigInt(Math.floor(parseFloat(amountBTC) * 100_000_000));
 
-    // 4. Estimasi Fee (Ambil "Half Hour Fee" dari mempool)
     const feeRes = await axios.get(
       "https://mempool.space/api/v1/fees/recommended"
     );
-    const feeRate = feeRes.data.halfHourFee; // sat/vbyte
+    const feeRate = feeRes.data.halfHourFee;
 
-    // 5. Buat Transaksi (PSBT)
     const psbt = new bitcoin.Psbt({ network: network });
 
-    let currentSats = 0;
+    let currentSats = 0; // Akumulator tetap number biar gampang dihitung
     let byteCount = 0;
-    const inputs = [];
 
-    // Pilih UTXO yang cukup (Coin Selection Sederhana)
     for (const utxo of utxos) {
-      // Mapping Data UTXO
-      const input = {
-        hash: utxo.txid,
-        index: utxo.vout,
-        witnessUtxo: {
-          script: Buffer.from(senderAddress, "utf-8"), // Placeholder, nanti diganti otomatis oleh lib
-          value: utxo.value,
-        },
-      };
-
-      // Karena kita pakai P2WPKH (Native Segwit), kita butuh scriptPubKey yang benar
       const p2wpkh = bitcoin.payments.p2wpkh({
         pubkey: keyPair.publicKey,
         network,
       });
-      input.witnessUtxo.script = p2wpkh.output!;
+
+      const input = {
+        hash: utxo.txid,
+        index: utxo.vout,
+        witnessUtxo: {
+          // FIX BTC 2: Paksa Script jadi Buffer (atasi error Uint8Array)
+          script: Buffer.from(p2wpkh.output!),
+          // FIX BTC 3: Value wajib BigInt
+          value: BigInt(utxo.value),
+        },
+      };
 
       psbt.addInput(input);
-      inputs.push(input);
-
       currentSats += utxo.value;
-      byteCount += 68; // Estimasi size per input (Segwit)
+      byteCount += 68;
 
-      if (currentSats >= amountSats) break; // Sudah cukup
+      // Cek kecukupan saldo (bandingkan number dengan number hasil konversi BigInt)
+      if (currentSats >= Number(amountSats)) break;
     }
 
-    // Estimasi Output size
-    byteCount += 31 * 2; // 2 Output (Tujuan + Kembalian) + Overhead
+    byteCount += 31 * 2;
     const fee = byteCount * feeRate;
 
-    if (currentSats < amountSats + fee) {
+    if (currentSats < Number(amountSats) + fee) {
       throw new Error(
-        `Saldo kurang! Punya: ${currentSats}, Butuh: ${
-          amountSats + fee
-        } (termasuk fee)`
+        `Saldo kurang! Butuh: ${
+          Number(amountSats) + fee
+        }, Punya: ${currentSats}`
       );
     }
 
-    // 6. Tambahkan Output (Tujuan)
+    // FIX BTC 4: Output Value wajib BigInt
     psbt.addOutput({
       address: toAddress,
-      value: amountSats,
+      value: amountSats, // Sudah BigInt
     });
 
-    // 7. Tambahkan Output Kembalian (Change) ke diri sendiri
-    const change = currentSats - amountSats - fee;
-    if (change > 546) {
-      // Anti-Dust (Jangan kirim kembalian kalau terlalu kecil)
+    // FIX BTC 5: Kembalian hitung dalam BigInt
+    const change = BigInt(currentSats) - amountSats - BigInt(fee);
+
+    // FIX BTC 6: Bandingkan dengan BigInt literal (546n)
+    if (change > 546n) {
       psbt.addOutput({
         address: senderAddress,
-        value: change,
+        value: change, // Sudah BigInt
       });
     }
 
-    // 8. Sign Transaksi
     psbt.signAllInputs(keyPair);
     psbt.finalizeAllInputs();
 
-    // 9. Broadcast
     const txHex = psbt.extractTransaction().toHex();
     console.log(`🚀 Broadcasting BTC Tx...`);
 
@@ -230,7 +223,6 @@ export const sendBtc = async (
     };
   } catch (error: any) {
     console.error("Gagal kirim BTC:", error);
-    // Error handling khusus axios
     const errMsg = error.response?.data ? error.response.data : error.message;
     return { success: false, error: errMsg };
   }
